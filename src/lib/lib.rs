@@ -13,6 +13,7 @@
 //     }
 // }
 
+use std::fmt::{self, Debug};
 
 static DEFAULT_RINGBUF_SIZE: usize = 100;
 
@@ -67,8 +68,16 @@ impl<T> RingBuffer<T> {
         }
     }
 
+    fn len(&self) -> usize {
+        self.size
+    }
+
+}
+
+impl<T> RingBuffer<T>
+where T: Clone
+{
     fn pop_front(&mut self) -> Option<T>
-    where T: Clone
     {
         if self.size == 0 {
             None
@@ -81,7 +90,6 @@ impl<T> RingBuffer<T> {
     }
 
     fn pop_back(&mut self) -> Option<T>
-    where T: Clone
     {
         if self.size == 0 {
             None
@@ -92,6 +100,25 @@ impl<T> RingBuffer<T> {
         }
     }
 
+    fn peak_front(&self) -> Option<T>
+    where T: Clone 
+    {
+        if self.size == 0 {
+            None
+        } else {
+            Some(self.buffer[self.head].clone())
+        }
+    }
+
+    fn peak_back(&self) -> Option<T>
+    where T: Clone
+    {
+        if self.size == 0 {
+            None
+        } else {
+            Some(self.buffer[self.tail].clone())
+        }
+    }
 }
 
 ///
@@ -115,6 +142,27 @@ impl<T> RingBuffer<T> {
     }
 }
 
+impl<T> fmt::Debug for RingBuffer<T>
+where T: Clone + Debug
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut organized_arr = Vec::<T>::new();
+        // TODO: implement a custom iterator
+        let mut i = self.head;
+        while i != self.tail {
+           organized_arr.push(self.buffer[i].clone());
+           i = self.index_forward(i);
+        }
+
+        f.debug_struct("RingBuffer")
+            .field("elements", &organized_arr)
+            .field("capacity", &self.capacity)
+            .field("head", &self.head)
+            .field("tail", &self.tail)
+            .field("size", &self.size).finish()
+    }
+}
+
 impl<T> Default for RingBuffer<T>
 where T: Default + Clone
 {
@@ -123,3 +171,4 @@ where T: Default + Clone
         RingBuffer::new(DEFAULT_RINGBUF_SIZE)
     } 
 }
+
