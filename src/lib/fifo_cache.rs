@@ -42,13 +42,6 @@ where
         }
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
-        self.hashtable.insert(key.clone(), value.clone());
-        self.rb.push_back(
-            CacheObject { key, value, meta: Default::default() }
-        );
-    }
-
     // TODO: Result return type to indicate potential eviction problem.
     pub fn evict(&mut self) {
         let obj = self.rb.pop_front();
@@ -58,6 +51,19 @@ where
         }
     }
 
+    pub fn insert(&mut self, key: K, value: V) {
+        self.hashtable.insert(key.clone(), value.clone());
+        self.rb.push_back(
+            CacheObject { key, value, meta: Default::default() }
+        );
+    }
+
+}
+
+impl<K, V> FIFOCache<K, V>
+where K: Eq + Hash
+{
+    // Separate impl block more generic trait bound
     #[inline]
     pub fn find(&self, key: &K) -> Option<&V> {
         self.hashtable.get(key)
