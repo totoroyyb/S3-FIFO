@@ -1,6 +1,7 @@
 use std::cmp::min;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::ops::Deref;
 
 use super::ring_buffer::RingBuffer;
 
@@ -14,18 +15,57 @@ impl CacheMetadata {
     fn inc_freq(&mut self) {
         self.freq = min(self.freq + 1, 3);
     }
+
+    #[inline(always)]
+    fn desc_freq(&mut self) {
+        if self.freq != 0 { self.freq -= 1; }
+    }
 }
 
 #[derive(Default, Clone)]
-pub struct CacheObject<K, V> {
-    key: K,
+pub struct CacheObject<V> {
     value: V,
     meta: CacheMetadata
 }
 
+impl<V> CacheObject<V> {
+    #[inline(always)]
+    fn inc_freq(&mut self) {
+        self.meta.inc_freq();
+    }
+
+    #[inline(always)]
+    fn desc_freq(&mut self) {
+        self.meta.desc_freq();
+    }
+
+    #[inline(always)]
+    fn set_value(&mut self, value: V) {
+        self.value = value;
+    }
+
+    #[inline(always)]
+    fn get_value(&self) -> &V {
+        &self.value
+    }
+
+    #[inline(always)]
+    fn get_value_copy(&self) -> V where V: Clone {
+        self.value.clone()
+    }
+}
+
+impl<V> Deref for CacheObject<V> {
+    type Target = V;
+
+    fn deref(&self) -> &Self::Target {
+        self.get_value()
+    }
+}
+
 pub struct FIFOCache<K, V> {
-    rb: RingBuffer<CacheObject<K, V>>,
-    hashtable: HashMap<K, V>,
+    rb: RingBuffer<K>,
+    hashtable: HashMap<K, CacheObject<V>>,
 }
 
 impl<K, V> FIFOCache<K, V>
@@ -42,31 +82,57 @@ where
         }
     }
 
-    // TODO: Result return type to indicate potential eviction problem.
-    pub fn evict(&mut self) {
-        let obj = self.rb.pop_front();
-        if let Some(obj) = obj {
-            let k = obj.key;
-            self.hashtable.remove(&k);
+    pub fn evict(&mut self) -> Option<(K, CacheObject<V>)> {
+        let key = self.rb.pop_front();
+        if let Some(key) = key {
+            self.hashtable.remove_entry(&key)
+        } else {
+            None
         }
     }
 
+    ///
+    /// Safety: 
+    /// insert will potentially overwrite elements in the RingBuffer 
+    /// if the number of elements exceeds the capacity.
     pub fn insert(&mut self, key: K, value: V) {
-        self.hashtable.insert(key.clone(), value.clone());
-        self.rb.push_back(
-            CacheObject { key, value, meta: Default::default() }
+        self.hashtable.insert(
+            key.clone(), 
+            CacheObject { value, meta: Default::default() }
         );
+        self.rb.push_back(key);
     }
 
+    ///
+    /// No-op if the key isn't present.
+    /// 
+    /// **DO NOT USE THIS FUNCTION FOR NOW**
+    pub fn update(&mut self, key: K, value: V) {
+        if self.hashtable.contains_key(&key) {
+            self.hashtable
+                .entry(key)
+                .and_modify(|obj| { 
+                    obj.set_value(value);
+                    // Should we manage metadat in this level???
+                    obj.inc_freq()
+                });
+        }
+    }
 }
 
 impl<K, V> FIFOCache<K, V>
-where K: Eq + Hash
 {
     // Separate impl block more generic trait bound
-    #[inline]
-    pub fn find(&self, key: &K) -> Option<&V> {
+    #[inline(always)]
+    pub fn find(&self, key: &K) -> Option<&CacheObject<V>>
+    where K: Eq + Hash
+    {
         self.hashtable.get(key)
+    }
+
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.rb.len()
     }
 }
 
@@ -74,5 +140,93 @@ impl<K, V> FIFOCache<K, V> {
     #[inline(always)]
     pub fn is_full(&self) -> bool {
         self.rb.is_full()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert() {
+        let mut cache: FIFOCache<isize, isize> = FIFOCache::new(5);
+        cache.insert(0, 0);
+        cache.insert(1, 1);
+
+        let rb_results = cache.rb.get_values();
+        assert_eq!(rb_results, vec![0, 1]);
+        
+        assert_eq!(cache.hashtable.len(), 2);
+
+        let cache_obj = cache.hashtable.get(&0);
+        if let Some(cache_obj) = cache_obj {
+            assert_eq!(cache_obj.deref(), &0);
+        } else {
+            panic!("cache_obj should exist");
+        }
+
+        let cache_obj = cache.hashtable.get(&1);
+        if let Some(cache_obj) = cache_obj {
+            assert_eq!(cache_obj.deref(), &1);
+        } else {
+            panic!("cache_obj should exist");
+        }
+    }
+
+    #[test]
+    fn find() {
+        let mut cache: FIFOCache<isize, isize> = FIFOCache::new(5);
+        cache.insert(0, 0);
+        cache.insert(1, 1);
+        let value = cache.find(&0).unwrap().deref();
+        assert_eq!(value, &0);
+
+        let value = cache.find(&1).unwrap().deref();
+        assert_eq!(value, &1);
+
+        let result = cache.find(&2);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn full_cache() {
+        let mut cache: FIFOCache<isize, isize> = FIFOCache::new(3);
+        cache.insert(0, 0);
+        cache.insert(1, 1);
+        cache.insert(2, 2);
+
+        assert!(cache.is_full());
+    }
+
+    #[test]
+    fn correct_size() {
+        let capacity = 100;
+        let mut cache: FIFOCache<usize, usize> = FIFOCache::new(capacity);
+
+        for i in 0..capacity {
+            cache.insert(i, i);
+            assert_eq!(cache.len(), i + 1);
+            assert_eq!(cache.rb.len(), cache.hashtable.len());
+        }
+    }
+
+    #[test]
+    fn correct_evict() {
+        let capacity = 100;
+        let mut cache: FIFOCache<usize, usize> = FIFOCache::new(capacity);
+
+        for i in 0..capacity {
+            cache.insert(i, i);
+        }
+
+        for i in 0..capacity {
+            let value = cache.evict();
+            assert!(!value.is_none(), "value should be present.");
+
+            if let Some((key, obj)) = value {
+                assert_eq!(key, i);
+                assert_eq!(*obj, i);
+            }
+        }
     }
 }

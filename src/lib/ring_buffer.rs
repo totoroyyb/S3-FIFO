@@ -188,7 +188,7 @@ where T: Default + Clone
 }
 
 #[cfg(test)]
-mod ring_buffer_tests {
+mod tests {
     use super::*;
 
     #[test]
