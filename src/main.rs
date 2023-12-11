@@ -1,7 +1,10 @@
-// use s3fifo::add;
+use s3fifo::prelude::*;
 
 fn main() {
     println!("Hello, world!");
-    // let val = add(10, 5);
-    // println!("value is {val}");
+    let mut rb: RingBuffer<isize> = RingBuffer::new(10);
+    for i in -5..5 {
+        rb.push_back(i);
+    }
+    println!("RingBuffer: {rb:?}");
 }
