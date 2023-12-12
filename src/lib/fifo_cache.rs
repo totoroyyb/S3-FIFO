@@ -12,12 +12,12 @@ pub struct CacheMetadata {
 
 impl CacheMetadata {
     #[inline(always)]
-    fn inc_freq(&mut self) {
+    pub fn inc_freq(&mut self) {
         self.freq = min(self.freq + 1, 3);
     }
 
     #[inline(always)]
-    fn desc_freq(&mut self) {
+    pub fn desc_freq(&mut self) {
         if self.freq != 0 { self.freq -= 1; }
     }
 }
@@ -40,18 +40,33 @@ impl<V> CacheObject<V> {
     }
 
     #[inline(always)]
-    fn set_value(&mut self, value: V) {
+    pub fn set_value(&mut self, value: V) {
         self.value = value;
     }
 
     #[inline(always)]
-    fn get_value(&self) -> &V {
+    pub fn get_value(&self) -> &V {
         &self.value
     }
 
     #[inline(always)]
-    fn get_value_copy(&self) -> V where V: Clone {
+    pub fn get_value_copy(&self) -> V where V: Clone {
         self.value.clone()
+    }
+
+    #[inline(always)]
+    pub fn get_freq(&self) -> usize {
+        self.meta.freq
+    }
+
+    #[inline(always)]
+    pub fn get_meta(&self) -> &CacheMetadata {
+        &self.meta
+    }
+
+    #[inline(always)]
+    pub fn get_meta_copy(&self) -> CacheMetadata {
+        self.meta.clone()
     }
 }
 
@@ -82,27 +97,6 @@ where
         }
     }
 
-    pub fn evict(&mut self) -> Option<(K, CacheObject<V>)> {
-        let key = self.rb.pop_front();
-        if let Some(key) = key {
-            self.hashtable.remove_entry(&key)
-        } else {
-            None
-        }
-    }
-
-    ///
-    /// Safety: 
-    /// insert will potentially overwrite elements in the RingBuffer 
-    /// if the number of elements exceeds the capacity.
-    pub fn insert(&mut self, key: K, value: V) {
-        self.hashtable.insert(
-            key.clone(), 
-            CacheObject { value, meta: Default::default() }
-        );
-        self.rb.push_back(key);
-    }
-
     ///
     /// No-op if the key isn't present.
     /// 
@@ -114,25 +108,81 @@ where
                 .and_modify(|obj| { 
                     obj.set_value(value);
                     // Should we manage metadat in this level???
-                    obj.inc_freq()
+                    // obj.inc_freq()
                 });
         }
     }
 }
 
 impl<K, V> FIFOCache<K, V>
+where 
+    K: Clone + Eq + Hash, 
 {
+    ///
+    /// Safety: 
+    /// insert will potentially overwrite elements in the RingBuffer 
+    /// if the number of elements exceeds the capacity.
+    pub fn insert(&mut self, key: K, value: V) {
+        let meta = CacheMetadata::default();
+        self.insert_with_meta(key, value, meta);
+    }
+
+    pub fn insert_with_meta(&mut self, key: K, value: V, meta: CacheMetadata) {
+        self.hashtable.insert(
+            key.clone(), 
+            CacheObject { value, meta }
+        );
+        self.rb.push_back(key);
+ 
+    }
+
+    pub fn evict(&mut self) -> Option<(K, CacheObject<V>)> {
+        let key = self.rb.pop_front();
+        if let Some(key) = key {
+            self.hashtable.remove_entry(&key)
+        } else {
+            None
+        }
+    }
+}
+
+impl<K, V> FIFOCache<K, V>
+{
+    #[inline(always)]
+    fn inc_freq(&mut self, key: &K) 
+    where K: Eq + Hash + Clone
+    {
+        self.hashtable.entry(key.clone()).and_modify(|obj| {
+            obj.inc_freq();
+        });
+    }
+
+
     // Separate impl block more generic trait bound
     #[inline(always)]
-    pub fn find(&self, key: &K) -> Option<&CacheObject<V>>
-    where K: Eq + Hash
+    pub fn find(&mut self, key: &K) -> Option<&CacheObject<V>>
+    where K: Eq + Hash + Clone
     {
+        self.inc_freq(key);
         self.hashtable.get(key)
     }
 
     #[inline(always)]
-    fn len(&self) -> usize {
+    pub fn find_mut(&mut self, key: &K) -> Option<&mut CacheObject<V>> 
+    where K: Eq + Hash + Clone
+    {
+        self.inc_freq(key);
+        self.hashtable.get_mut(key)
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
         self.rb.len()
+    }
+
+    #[inline(always)]
+    pub fn empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
