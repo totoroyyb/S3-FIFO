@@ -50,6 +50,8 @@ where
 
 }
 
+///
+/// User-facing/client-facing APIs.
 impl<K, V> S3FIFO<K,V> 
 where 
     K: Eq + Hash,
@@ -96,8 +98,21 @@ where
         self.insert(key, value);
     }
 
+    #[inline(always)]
+    pub fn is_full(&self) -> bool {
+        self.size == self.cache_size
+    }
+}
+
+/// 
+/// Some internal functions
+/// They are develoepr-facing APIs.
+impl<K, V> S3FIFO<K, V> 
+where 
+    K: Clone + Eq + Hash, 
+    V: Clone
+{
     fn insert(&mut self, key: K, value: V) 
-    where K: Clone, V: Clone
     {
         while self.is_full() { self.evict() }
 
@@ -112,12 +127,7 @@ where
     }
 
     #[inline(always)]
-    pub fn is_full(&self) -> bool {
-        self.size == self.cache_size
-    }
-
-    #[inline(always)]
-    fn evict(&mut self) where K: Clone, V: Clone {
+    fn evict(&mut self) {
         if self.s_queue.is_full() {
             self.evict_s();
         }
@@ -129,7 +139,6 @@ where
 
     #[inline(always)]
     fn evict_s(&mut self) 
-    where K: Clone, V: Clone 
     {
         let mut evicted = false;
         while !evicted && !self.s_queue.empty() {
@@ -147,7 +156,6 @@ where
 
     #[inline(always)]
     fn evict_m(&mut self) 
-    where K: Clone, V: Clone 
     {
         let mut evicted = false;
         while !evicted && !self.m_queue.empty() {
