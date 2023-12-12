@@ -169,3 +169,78 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::S3FIFO;
+
+    #[test]
+    fn init() {
+        let cache: S3FIFO<isize, isize> = S3FIFO::new(100, 0.1);
+
+        assert_eq!(cache.cache_size, 100);
+        assert_eq!(cache.small_cache_capacity_ratio, 0.1);
+        assert_eq!(cache.small_cache_capacity, 10);
+        assert_eq!(cache.size, 0);
+    }
+
+    #[test]
+    fn empty_get() {
+        let mut cache: S3FIFO<isize, isize> = S3FIFO::new(100, 0.1);
+        let result = cache.get(&1);
+        assert!(result.is_none());
+        assert_eq!(cache.size, 0);
+    }
+
+    #[test]
+    fn put_value() {
+        let mut cache: S3FIFO<isize, isize> = S3FIFO::new(100, 0.1);
+        cache.put(0, 0);
+
+        assert_eq!(cache.size, 1);
+        assert_eq!(cache.s_queue.len(), 1);
+        assert_eq!(cache.m_queue.len(), 0);
+        assert_eq!(cache.g_queue.len(), 0);
+
+        cache.put(1, 1);
+        assert_eq!(cache.size, 2);
+        assert_eq!(cache.s_queue.len(), 2);
+        assert_eq!(cache.m_queue.len(), 0);
+        assert_eq!(cache.g_queue.len(), 0);
+    }
+
+    #[test]
+    fn dup_put() {
+        let mut cache: S3FIFO<isize, isize> = S3FIFO::new(100, 0.1);
+        cache.put(0, 0);
+
+        assert_eq!(cache.size, 1);
+        assert_eq!(cache.s_queue.len(), 1);
+        assert_eq!(cache.m_queue.len(), 0);
+        assert_eq!(cache.g_queue.len(), 0);
+
+        cache.put(0, 1);
+        assert_eq!(cache.size, 1);
+        assert_eq!(cache.s_queue.len(), 1);
+        assert_eq!(cache.m_queue.len(), 0);
+        assert_eq!(cache.g_queue.len(), 0);
+    }
+
+    #[test]
+    fn simple_put_get() {
+        let mut cache: S3FIFO<isize, isize> = S3FIFO::new(100, 0.1);
+        cache.put(0, 0);
+        let result = cache.get(&0);
+        assert_eq!(result, Some(&0));
+    }
+
+    #[test]
+    fn multiple_put_get() {
+        let mut cache: S3FIFO<isize, isize> = S3FIFO::new(100, 0.1);
+        for i in 0..50 {
+            cache.put(i, i);
+            let result = cache.get(&i);
+            assert_eq!(result, Some(&i));
+        }
+    }
+}
