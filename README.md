@@ -1,6 +1,6 @@
 # S3FIFO
 
-This is a *pretty rough* Rust implementation of the [S3FIFO paper](https://dl.acm.org/doi/10.1145/3600006.3613147) presented at SOSP '23.
+This is a *pretty rough* Rust implementation of the [S3FIFO paper](https://dl.acm.org/doi/10.1145/3600006.3613147) presented at SOSP '23 by authors - "Yang, Juncheng and Zhang, Yazhuo and Qiu, Ziyue and Yue, Yao and Rashmi, K.V." Their paper submission repository is [here](https://github.com/Thesys-lab/sosp23-s3fifo).
 
 **NOTE:** This is **NOT** a complete S3FIFO implementation. Currently, it does not guarantee thread safety, lacks extensive unit tests, and there's no evaluation using real-world traces. It's just me having some fun with Rust... and, admittedly, procrastinating on my own research...
 
